@@ -7,15 +7,66 @@
     <body>
         <h1>Central de Emergências</h1>
 
-        <p>Carregar CSV: <input type="file" id="arquivo" accept=".csv" /> <span id="infoCarga"></span></p>
+        <p>
+            Carregar CSV: <input type="file" id="arquivo" accept=".csv" autocomplete="off" />
+            <span id="infoCarga"></span>
+        </p>
 
-        <form id="busca">
-            Período: de <input type="datetime-local" id="de" step="1" /> até
-            <input type="datetime-local" id="ate" step="1" />
-            <button type="button" data-minutos="30">30 min</button>
-            <button type="button" data-minutos="1440">24 h</button>
-            <button type="button" data-minutos="10080">7 dias</button>
-            <button type="submit">Buscar</button>
+        <form id="consulta" autocomplete="off">
+            <fieldset>
+                <legend>Consultar por id</legend>
+                Id: <input id="id" size="10" required />
+                <button type="submit">Consultar</button>
+            </fieldset>
+        </form>
+
+        <form id="busca" autocomplete="off">
+            <fieldset>
+                <legend>Filtros</legend>
+                <p>
+                    Endereço: <input id="endereco" list="sugestoes" size="30" />
+                    <datalist id="sugestoes"></datalist>
+                </p>
+                <p>
+                    Região:
+                    <select id="regiao">
+                        <option value="">todas</option>
+                    </select>
+                    Categoria:
+                    <select id="categoria">
+                        <option value="">todas</option>
+                        <option>EMS</option>
+                        <option>Fire</option>
+                        <option>Traffic</option>
+                    </select>
+                    Tipo:
+                    <select id="tipo">
+                        <option value="">todos</option>
+                    </select>
+                </p>
+                <p>
+                    Período: de <input type="datetime-local" id="de" step="1" /> até
+                    <input type="datetime-local" id="ate" step="1" />
+                    <button type="button" data-minutos="30">30 min</button>
+                    <button type="button" data-minutos="1440">24 h</button>
+                    <button type="button" data-minutos="10080">7 dias</button>
+                    <button type="button" id="qualquerPeriodo">qualquer período</button>
+                </p>
+                <p>
+                    <label><input type="checkbox" id="soPendentes" checked /> só pendentes</label>
+                </p>
+            </fieldset>
+
+            <fieldset>
+                <legend>Ordem</legend>
+                <label><input type="radio" name="ordem" value="recentes" /> recentes primeiro</label>
+                <label><input type="radio" name="ordem" value="antigos" /> antigos primeiro</label>
+                <label><input type="radio" name="ordem" value="prioridade" checked /> prioridade</label>
+            </fieldset>
+
+            <p>
+                <button type="button" id="limpar">Limpar</button>
+            </p>
         </form>
 
         <p id="contagem"></p>
@@ -27,6 +78,7 @@
                     <th>Data/hora</th>
                     <th>Categoria</th>
                     <th>Tipo</th>
+                    <th>Nível</th>
                     <th>Região</th>
                     <th>Endereço</th>
                     <th>Situação</th>
@@ -38,8 +90,11 @@
         <p><button id="anterior">Anterior</button> <span id="pagina"></span> <button id="proxima">Próxima</button></p>
 
         <script src="hash.js"></script>
-        <script src="ocorrencia.js"></script>
+        <script src="tabelaHash.js"></script>
+        <script src="tst.js"></script>
         <script src="arvoreBMais.js"></script>
+        <script src="ocorrencia.js"></script>
+        <script src="prioridades.js"></script>
         <script src="pagina.js"></script>
     </body>
 </html>
