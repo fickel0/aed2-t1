@@ -94,7 +94,11 @@ el("arquivo").addEventListener("change", async () => {
     if (arquivo) carregar(await arquivo.text());
 });
 
-// linha com campo vazio, id inválido, categoria desconhecida ou id repetido fica de fora
+// a carga também confere a integridade de cada linha e mostra um relatório no fim:
+// - incompleta: campo vazio ou valor inválido. não entra
+// - alterada: o hash do CSV não bate com o recalculado (alguém mexeu fora do sistema). entra
+// - duplicada: mesmo conteúdo de outra linha. com o mesmo id não entra, com outro id entra
+// - conflito: mesmo id de outra linha, mas conteúdo diferente. fica a primeira
 function carregar(texto) {
     ocorrencias = new ArvoreBMais();
     palavras = new TST();
@@ -102,21 +106,66 @@ function carregar(texto) {
     idxRegiao = new TabelaHash();
     pendentes = new TabelaHash();
 
-    let ignoradas = 0;
+    const incompletas = [];
+    const alteradas = [];
+    const duplicadas = [];
+    const conflitos = [];
+    // texto canônico → id da primeira ocorrência com esse conteúdo. o canônico não tem o
+    // sufixo do id, então duas ocorrências iguais no mesmo segundo caem na mesma chave
+    const vistos = new TabelaHash();
+
+    let numero = 1; // número da linha no arquivo (a 1 é o cabeçalho)
     for (const linha of lerCsv(texto)) {
+        numero++;
         const id = textoParaId(linha.id);
         const temVazio = COLUNAS.some((coluna) => linha[coluna].trim() === "");
-        if (id === null || temVazio || !CATEGORIAS.includes(linha.categoria) || ocorrencias.buscar(id)) {
-            ignoradas++;
+        const valido = CATEGORIAS.includes(linha.categoria) && (linha.atendido === "0" || linha.atendido === "1");
+        if (id === null || temVazio || !valido) {
+            incompletas.push(`linha ${numero} (${linha.id})`);
             continue;
         }
         linha.id = id;
         linha.atendido = Number(linha.atendido);
+        const canonico = textoCanonico(linha);
+
+        const mesmoId = ocorrencias.buscar(id);
+        if (mesmoId !== undefined) {
+            if (textoCanonico(mesmoId) === canonico) duplicadas.push(`linha ${numero}: cópia de ${idParaTexto(id)}`);
+            else conflitos.push(`linha ${numero}: ${idParaTexto(id)} já existe com outro conteúdo`);
+            continue;
+        }
+
+        const mesmoConteudo = vistos.buscar(canonico);
+        if (mesmoConteudo !== undefined) {
+            duplicadas.push(`${idParaTexto(id)}: mesmo conteúdo de ${idParaTexto(mesmoConteudo)}`);
+        } else {
+            vistos.inserir(canonico, id);
+        }
+
+        if (linha.hash !== hashDaOcorrencia(linha)) alteradas.push(idParaTexto(id));
         indexar(linha);
     }
-    el("infoCarga").textContent = `${ocorrencias.tamanho} ocorrências carregadas, ${ignoradas} linhas ignoradas`;
+
+    el("infoCarga").textContent = `${ocorrencias.tamanho} ocorrências carregadas`;
+    el("textoRelatorio").textContent = [
+        `${ocorrencias.tamanho} ocorrências carregadas.`,
+        parteDoRelatorio("Incompletas ou inválidas (não carregadas)", incompletas),
+        parteDoRelatorio("Alteradas fora do sistema (o hash não bate)", alteradas),
+        parteDoRelatorio("Duplicadas", duplicadas),
+        parteDoRelatorio("Conflitos de versão (ficou a primeira)", conflitos),
+    ].join("\n\n");
+    el("relatorio").showModal();
+
     preencherListas();
     buscar();
+}
+
+// o título com a quantidade e as 20 primeiras, pra janela não ficar enorme
+function parteDoRelatorio(titulo, lista) {
+    const linhas = [`${titulo}: ${lista.length}`];
+    for (const item of lista.slice(0, 20)) linhas.push("  " + item);
+    if (lista.length > 20) linhas.push(`  ... e mais ${lista.length - 20}`);
+    return linhas.join("\n");
 }
 
 // as listas de região e de tipo saem das chaves dos próprios índices. o que estava
