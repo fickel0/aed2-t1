@@ -1,6 +1,16 @@
 // tabela hash com encadeamento: cada balde é uma lista de pares [chave, valor].
-// a chave sempre vira texto (os ids também), por causa do hash polinomial.
-// precisa do hash.js carregado antes
+// a chave sempre vira texto (os ids também), por causa do hash polinomial
+
+// hash polinomial base 31, pelo método de Horner: h = h * 31 + código da letra.
+// o ">>> 0" corta em 32 bits (módulo 2^32)
+function hashPolinomial(texto) {
+    let h = 0;
+    for (let i = 0; i < texto.length; i++) {
+        h = (h * 31 + texto.charCodeAt(i)) >>> 0;
+    }
+    return h;
+}
+
 class TabelaHash {
     constructor() {
         this.capacidade = 16;
@@ -14,8 +24,9 @@ class TabelaHash {
         return baldes;
     }
 
-    // em qual balde a chave cai.
-    // capacidade em potência de 2 funciona porque a base 31 é ímpar (o HashMap do Java faz igual)
+    // em qual balde a chave cai. com a capacidade em potência de 2, o % só olha os bits de
+    // baixo do hash (com 16 baldes, "A" e "Q" caem no mesmo). um primo espalharia melhor, mas
+    // com as chaves da base os baldes ficaram bem divididos: com 9.996 ids, o maior tem 5
     baldeDa(chave) {
         return this.baldes[hashPolinomial(chave) % this.capacidade];
     }

@@ -25,8 +25,8 @@ el("arquivo").addEventListener("change", async () => {
     if (arquivo) carregar(await arquivo.text());
 });
 
-function carregar(texto) {
-    const relatorio = carregarCsv(texto);
+async function carregar(texto) {
+    const relatorio = await carregarCsv(texto);
     el("infoCarga").textContent = `${ocorrencias.tamanho} ocorrências carregadas`;
     el("textoRelatorio").textContent = [
         `${ocorrencias.tamanho} ocorrências carregadas.`,
@@ -197,11 +197,11 @@ function abrirJanela(o) {
 
 // o form da janela é method="dialog": qualquer botão fecha a janela, e o value do botão
 // vira o returnValue
-el("janela").addEventListener("close", () => {
+el("janela").addEventListener("close", async () => {
     const acao = el("janela").returnValue;
     const f = el("editor");
     if (acao === "salvar") {
-        salvarOcorrencia(editando, {
+        const salva = await salvarOcorrencia(editando, {
             categoria: f.categoria.value,
             tipo: f.tipo.value,
             regiao: f.regiao.value,
@@ -209,6 +209,7 @@ el("janela").addEventListener("close", () => {
             endereco: f.endereco.value,
             atendido: f.atendido.checked,
         });
+        if (salva === null) alert("Não salvou: tem campo vazio ou categoria inválida.");
     } else if (acao === "remover") {
         removerOcorrencia(editando);
     } else {

@@ -3,12 +3,13 @@ Gera o dados.csv a partir do 911.csv (Kaggle, montcoalert).
 Uso: python preparar_dados.py [entrada] [saida]
 
 As datas são puxadas pro presente, pra que o último chamado seja "agora".
-O id e o hash são calculados igual ao ocorrencia.js e ao hash.js.
+O id e o hash são calculados igual ao ocorrencia.js da página.
 Se mudar aqui, tem que mudar lá também.
 """
 
 import calendar
 import csv
+import hashlib
 import math
 import random
 import re
@@ -37,15 +38,7 @@ def id_para_texto(id):
     return texto + "-" + str(sufixo)
 
 
-# hash polinomial base 31, cortado em 32 bits
-def hash_polinomial(texto):
-    h = 0
-    for letra in texto:
-        h = (h * 31 + ord(letra)) % 2**32
-    return h
-
-
-# o sufixo do id fica de fora do texto
+# SHA-256 do texto da ocorrência. o sufixo do id fica de fora do texto
 def hash_da_ocorrencia(o):
     data_hora = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(o["id"] // 256))
     campos = [
@@ -57,7 +50,7 @@ def hash_da_ocorrencia(o):
         o["endereco"],
         str(o["atendido"]),
     ]
-    return format(hash_polinomial("|".join(campos)), "08x")
+    return hashlib.sha256("|".join(campos).encode("utf-8")).hexdigest()
 
 
 # o 911.csv vem todo em maiúsculas. o endereço fica assim, mas tipo e região são arrumados.

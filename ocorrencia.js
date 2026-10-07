@@ -1,6 +1,5 @@
 // o id e o hash de integridade de uma ocorrência.
-// o preparar_dados.py faz as mesmas contas em python: se mudar aqui, muda lá também.
-// precisa do hash.js carregado antes
+// o preparar_dados.py faz as mesmas contas em python: se mudar aqui, muda lá também
 
 const COLUNAS = ["id", "categoria", "tipo", "zip", "regiao", "endereco", "atendido", "hash"];
 const CATEGORIAS = ["EMS", "Fire", "Traffic"];
@@ -58,7 +57,12 @@ function textoCanonico(o) {
     return [o.categoria, o.tipo, dataHoraDoId(o.id), o.zip, o.regiao, o.endereco, o.atendido].join("|");
 }
 
-// em hexadecimal com 8 dígitos, que é como vai pro CSV
-function hashDaOcorrencia(o) {
-    return hashPolinomial(textoCanonico(o)).toString(16).padStart(8, "0");
+// SHA-256 do texto, em hexadecimal (64 dígitos), que é como vai pro CSV.
+// não dá pra usar o hash polinomial da tabela: ele é linear, então dá pra trocar letras e
+// manter o mesmo número ("RT309" e "RSR09" dão igual). o SHA-256 vem pronto do navegador
+// (crypto.subtle), e por isso a função é async
+async function hashDaOcorrencia(o) {
+    const bytes = new TextEncoder().encode(textoCanonico(o));
+    const resumo = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    return Array.from(resumo, (b) => b.toString(16).padStart(2, "0")).join("");
 }

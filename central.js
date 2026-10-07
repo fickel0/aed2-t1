@@ -84,7 +84,7 @@ function lerCsv(texto) {
 // - alterada: o hash do CSV não bate com o recalculado (alguém mexeu fora do sistema). entra
 // - duplicada: mesmo conteúdo de outra linha. com o mesmo id não entra, com outro id entra
 // - conflito: mesmo id de outra linha, mas conteúdo diferente. fica a primeira
-function carregarCsv(texto) {
+async function carregarCsv(texto) {
     ocorrencias = new ArvoreBMais();
     palavras = new TST();
     idxTipo = new TabelaHash();
@@ -100,9 +100,8 @@ function carregarCsv(texto) {
     for (const linha of lerCsv(texto)) {
         numero++;
         const id = textoParaId(linha.id);
-        const temVazio = COLUNAS.some((coluna) => linha[coluna].trim() === "");
-        const valido = CATEGORIAS.includes(linha.categoria) && (linha.atendido === "0" || linha.atendido === "1");
-        if (id === null || temVazio || !valido) {
+        const atendidoValido = linha.atendido === "0" || linha.atendido === "1";
+        if (id === null || linha.hash === "" || !atendidoValido || !camposValidos(linha)) {
             relatorio.incompletas.push(`linha ${numero} (${linha.id})`);
             continue;
         }
@@ -127,10 +126,17 @@ function carregarCsv(texto) {
             vistos.inserir(canonico, id);
         }
 
-        if (linha.hash !== hashDaOcorrencia(linha)) relatorio.alteradas.push(idParaTexto(id));
+        if (linha.hash !== (await hashDaOcorrencia(linha))) relatorio.alteradas.push(idParaTexto(id));
         indexar(linha);
     }
     return relatorio;
+}
+
+// a mesma regra vale na carga e no cadastro: nenhum campo vazio e categoria conhecida
+const CAMPOS = ["categoria", "tipo", "zip", "regiao", "endereco"];
+
+function camposValidos(o) {
+    return CAMPOS.every((campo) => o[campo].trim() !== "") && CATEGORIAS.includes(o.categoria);
 }
 
 // o CSV pra salvar: o mesmo formato do preparar_dados.py, em ordem de id
@@ -162,8 +168,8 @@ function sugestoes(prefixo) {
 }
 
 // a busca é feita em três etapas, como num banco de dados:
-// - caminho: o primeiro campo preenchido, nesta ordem, usa a sua estrutura pra gerar as
-//   candidatas. a ordem é de quem costuma devolver menos linhas
+// - caminho: uma estrutura gera as candidatas (o endereço pela TST, ou o menor dos
+//   conjuntos de região, tipo e pendentes, ou o período pela B+)
 // - filtro: cada candidata é conferida contra todos os campos preenchidos
 // - ordem: recentes, antigos ou prioridade
 // c tem os campos da busca: endereco (lista de palavras), regiao, categoria, tipo,
@@ -181,9 +187,18 @@ function candidatas(c) {
         // a TST usa só a primeira palavra. as outras ficam pro filtro
         return { lista: comPrefixo(c.endereco[0]), emOrdem: false };
     }
-    if (c.regiao !== "") return { lista: valoresDoConjunto(idxRegiao, c.regiao), emOrdem: false };
-    if (c.tipo !== "") return { lista: valoresDoConjunto(idxTipo, c.tipo), emOrdem: false };
-    if (c.soPendentes) return { lista: pendentes.valores(), emOrdem: false };
+    // dos conjuntos dos campos preenchidos, o menor. cada conjunto sabe o próprio tamanho,
+    // então escolher custa O(1)
+    const conjuntos = [];
+    if (c.regiao !== "") conjuntos.push(idxRegiao.buscar(c.regiao));
+    if (c.tipo !== "") conjuntos.push(idxTipo.buscar(c.tipo));
+    if (c.soPendentes) conjuntos.push(pendentes);
+    if (conjuntos.includes(undefined)) return { lista: [], emOrdem: false }; // região ou tipo que não existe
+    if (conjuntos.length > 0) {
+        let menor = conjuntos[0];
+        for (const conjunto of conjuntos) if (conjunto.tamanho < menor.tamanho) menor = conjunto;
+        return { lista: menor.valores(), emOrdem: false };
+    }
     // sem nenhum dos de cima: o período (ou a base inteira, se ele estiver vazio).
     // a B+ devolve do mais velho pro mais novo, então pros recentes é só inverter
     const lista = ocorrencias.intervalo(c.menor, c.maior);
@@ -199,11 +214,6 @@ function comPrefixo(prefixo) {
         for (const o of conjunto.valores()) juntas.inserir(o.id, o);
     });
     return juntas.valores();
-}
-
-function valoresDoConjunto(indice, chave) {
-    const conjunto = indice.buscar(chave);
-    return conjunto === undefined ? [] : conjunto.valores();
 }
 
 function passa(o, c) {
@@ -239,18 +249,28 @@ function ordenar(lista, emOrdem, ordem) {
 
 // cadastro, edição e remoção
 
-// cria (se o for null) ou altera uma ocorrência com os campos dados.
+// cria (se o for null) ou altera uma ocorrência com os campos dados. devolve null, sem
+// mudar nada, se algum campo for inválido (a mesma regra da carga).
 // alterar é tirar dos índices, mudar os campos e colocar de novo. o id não muda
-function salvarOcorrencia(o, campos) {
-    if (o === null) o = { id: idDeAgora() };
-    else desindexar(o);
-    o.categoria = campos.categoria;
-    o.tipo = semVirgula(campos.tipo);
-    o.regiao = semVirgula(campos.regiao);
-    o.zip = semVirgula(campos.zip);
-    o.endereco = semVirgula(campos.endereco).toUpperCase();
-    o.atendido = campos.atendido ? 1 : 0;
-    o.hash = hashDaOcorrencia(o);
+async function salvarOcorrencia(o, campos) {
+    const nova = {
+        id: o === null ? idDeAgora() : o.id,
+        categoria: campos.categoria,
+        tipo: semVirgula(campos.tipo),
+        regiao: semVirgula(campos.regiao),
+        zip: semVirgula(campos.zip),
+        endereco: semVirgula(campos.endereco).toUpperCase(),
+        atendido: campos.atendido ? 1 : 0,
+    };
+    if (!camposValidos(nova)) return null;
+    nova.hash = await hashDaOcorrencia(nova);
+
+    // o hash é calculado antes de mexer nos índices, pra eles não ficarem pela metade
+    if (o === null) o = nova;
+    else {
+        desindexar(o);
+        Object.assign(o, nova);
+    }
     indexar(o);
     return o;
 }
