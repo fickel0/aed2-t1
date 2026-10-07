@@ -1,4 +1,4 @@
-// a página: carrega o CSV, monta as estruturas e faz as buscas
+// a página: carrega o CSV, monta as estruturas, faz as buscas e edita as ocorrências
 
 const POR_PAGINA = 50;
 
@@ -28,7 +28,7 @@ function novaOpcao(texto, valor) {
 // leitura do CSV
 
 // cada linha vira um objeto { id: ..., categoria: ..., ... } usando o cabeçalho.
-// nenhum campo do dados.csv tem vírgula, então o split basta
+// nenhum campo tem vírgula (a janela de edição troca por espaço), então o split basta
 function lerCsv(texto) {
     const linhas = texto.split(/\r?\n/).filter((linha) => linha !== "");
     const cabecalho = linhas[0].split(",");
@@ -76,6 +76,16 @@ function indexar(o) {
     if (o.atendido === 0) pendentes.inserir(o.id, o);
 }
 
+// o contrário do indexar. os conjuntos que ficam vazios continuam lá (a TST nem tem
+// remoção), e quem lista os índices pula eles
+function desindexar(o) {
+    ocorrencias.remover(o.id);
+    for (const palavra of palavrasDe(o.endereco)) palavras.buscar(palavra).remover(o.id);
+    idxTipo.buscar(o.tipo).remover(o.id);
+    idxRegiao.buscar(o.regiao).remover(o.id);
+    pendentes.remover(o.id);
+}
+
 // carga
 
 // tudo fica só na memória: um F5 apaga os dados e a escolha do arquivo
@@ -109,15 +119,31 @@ function carregar(texto) {
     buscar();
 }
 
-// as listas de região e de tipo saem dos próprios índices
+// as listas de região e de tipo saem das chaves dos próprios índices. o que estava
+// escolhido continua escolhido (depois de salvar uma ocorrência, por exemplo)
 function preencherListas() {
+    const regiaoEscolhida = el("regiao").value;
+    const tipoEscolhido = el("tipo").value;
+
     el("regiao").replaceChildren(novaOpcao("todas", ""));
+    el("regioesConhecidas").replaceChildren();
     for (const regiao of idxRegiao.chaves().sort()) {
+        if (idxRegiao.buscar(regiao).tamanho === 0) continue;
         el("regiao").append(novaOpcao(regiao, regiao));
+        el("regioesConhecidas").append(novaOpcao(regiao, regiao));
     }
 
     el("tipo").replaceChildren(novaOpcao("todos", ""));
-    for (const tipo of idxTipo.chaves().sort()) el("tipo").append(novaOpcao(tipo, tipo));
+    for (const tipo of idxTipo.chaves().sort()) {
+        if (idxTipo.buscar(tipo).tamanho > 0) el("tipo").append(novaOpcao(tipo, tipo));
+    }
+
+    // na janela de edição, a sugestão de tipo são os da tabela de prioridades
+    el("tiposConhecidos").replaceChildren();
+    for (const tipo of prioridades.chaves().sort()) el("tiposConhecidos").append(novaOpcao(tipo, tipo));
+
+    el("regiao").value = regiaoEscolhida;
+    el("tipo").value = tipoEscolhido;
 }
 
 // sugestões: a cada letra digitada, a TST devolve as palavras que começam com a última
@@ -292,6 +318,87 @@ function ordenar(lista, emOrdem, ordem) {
     }
 }
 
+// cadastro, edição e remoção
+
+// a mesma janela serve pra criar e editar. editando é a ocorrência aberta, ou null se for nova
+let editando = null;
+
+el("nova").addEventListener("click", () => abrirJanela(null));
+
+function abrirJanela(o) {
+    editando = o;
+    const f = el("editor");
+    f.reset();
+    el("botaoRemover").hidden = o === null;
+    if (o === null) {
+        el("tituloJanela").textContent = "Nova ocorrência (com a data e hora de agora)";
+    } else {
+        el("tituloJanela").textContent = `Ocorrência ${idParaTexto(o.id)}, de ${dataNaTela(o.id)}`;
+        f.categoria.value = o.categoria;
+        f.tipo.value = o.tipo;
+        f.regiao.value = o.regiao;
+        f.zip.value = o.zip;
+        f.endereco.value = o.endereco;
+        f.atendido.checked = o.atendido === 1;
+    }
+    el("janela").returnValue = ""; // o Esc fecha sem mudar isso, então conta como cancelar
+    el("janela").showModal();
+}
+
+// o form da janela é method="dialog": qualquer botão fecha a janela, e o value do botão
+// vira o returnValue
+el("janela").addEventListener("close", () => {
+    const acao = el("janela").returnValue;
+    if (acao === "salvar") salvar();
+    else if (acao === "remover") desindexar(editando);
+    else return;
+    preencherListas();
+    // refaz o que estava na tela: a consulta por id, se tinha uma, ou a busca pelos filtros
+    if (el("id").value !== "") el("consulta").requestSubmit();
+    else buscar();
+});
+
+// editar é tirar dos índices, mudar os campos e colocar de novo. o id não muda
+function salvar() {
+    const f = el("editor");
+    let o = editando;
+    if (o === null) o = { id: idDeAgora() };
+    else desindexar(o);
+    o.categoria = f.categoria.value;
+    o.tipo = semVirgula(f.tipo.value);
+    o.regiao = semVirgula(f.regiao.value);
+    o.zip = semVirgula(f.zip.value);
+    o.endereco = semVirgula(f.endereco.value).toUpperCase();
+    o.atendido = f.atendido.checked ? 1 : 0;
+    o.hash = hashDaOcorrencia(o);
+    indexar(o);
+}
+
+// vírgula vira espaço, senão quebraria a coluna no CSV
+function semVirgula(texto) {
+    return texto.replaceAll(",", " ").trim();
+}
+
+// o segundo atual com o primeiro sufixo que ninguém usou
+function idDeAgora() {
+    const segundos = Math.floor(Date.now() / 1000);
+    let sufixo = 0;
+    while (ocorrencias.buscar(criarId(segundos, sufixo)) !== undefined) sufixo++;
+    return criarId(segundos, sufixo);
+}
+
+// salvar CSV: o mesmo formato do preparar_dados.py, em ordem de id
+el("salvarCsv").addEventListener("click", () => {
+    const linhas = [COLUNAS.join(",")];
+    for (const o of ocorrencias.intervalo(0, Number.MAX_SAFE_INTEGER)) {
+        linhas.push(COLUNAS.map((coluna) => (coluna === "id" ? idParaTexto(o.id) : o[coluna])).join(","));
+    }
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([linhas.join("\n") + "\n"], { type: "text/csv" }));
+    link.download = "dados.csv";
+    link.click();
+});
+
 // tabela e páginas
 
 // só a exibição é dividida em páginas: o resultado inteiro já foi calculado (a tela mostra
@@ -315,15 +422,23 @@ el("proxima").addEventListener("click", () => {
     mostrar();
 });
 
+function dataNaTela(id) {
+    return new Date(segundosDoId(id) * 1000).toLocaleString("pt-BR");
+}
+
 function mostrar() {
     const tabela = el("linhas");
     tabela.replaceChildren();
     for (const o of resultado.slice(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA)) {
-        const data = new Date(segundosDoId(o.id) * 1000).toLocaleString("pt-BR");
+        const data = dataNaTela(o.id);
         const situacao = o.atendido ? "atendida" : "pendente";
         const tr = tabela.insertRow();
         const valores = [idParaTexto(o.id), data, o.categoria, o.tipo, nivelDe(o), o.regiao, o.endereco, situacao];
         for (const valor of valores) tr.insertCell().textContent = valor;
+        const editar = document.createElement("button");
+        editar.textContent = "editar";
+        editar.addEventListener("click", () => abrirJanela(o));
+        tr.insertCell().append(editar);
     }
     const totalPaginas = Math.max(1, Math.ceil(resultado.length / POR_PAGINA));
     el("pagina").textContent = `página ${pagina + 1} de ${totalPaginas}`;

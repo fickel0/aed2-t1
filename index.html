@@ -12,6 +12,11 @@
             <span id="infoCarga"></span>
         </p>
 
+        <p>
+            <button type="button" id="nova">Nova ocorrência</button>
+            <button type="button" id="salvarCsv">Salvar CSV</button>
+        </p>
+
         <form id="consulta" autocomplete="off">
             <fieldset>
                 <legend>Consultar por id</legend>
@@ -82,12 +87,43 @@
                     <th>Região</th>
                     <th>Endereço</th>
                     <th>Situação</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="linhas"></tbody>
         </table>
 
         <p><button id="anterior">Anterior</button> <span id="pagina"></span> <button id="proxima">Próxima</button></p>
+
+        <dialog id="janela">
+            <form method="dialog" id="editor" autocomplete="off">
+                <p><strong id="tituloJanela"></strong></p>
+                <p>
+                    Categoria:
+                    <select name="categoria">
+                        <option>EMS</option>
+                        <option>Fire</option>
+                        <option>Traffic</option>
+                    </select>
+                    Tipo: <input name="tipo" list="tiposConhecidos" size="30" required />
+                    <datalist id="tiposConhecidos"></datalist>
+                </p>
+                <p>
+                    Região: <input name="regiao" list="regioesConhecidas" required />
+                    <datalist id="regioesConhecidas"></datalist>
+                    Zip: <input name="zip" size="6" required />
+                </p>
+                <p>Endereço: <input name="endereco" size="40" required /></p>
+                <p>
+                    <label><input type="checkbox" name="atendido" /> atendida</label>
+                </p>
+                <p>
+                    <button value="salvar">Salvar</button>
+                    <button value="remover" id="botaoRemover" formnovalidate>Remover</button>
+                    <button value="cancelar" formnovalidate>Cancelar</button>
+                </p>
+            </form>
+        </dialog>
 
         <script src="hash.js"></script>
         <script src="tabelaHash.js"></script>
